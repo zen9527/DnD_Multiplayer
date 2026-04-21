@@ -1,23 +1,23 @@
-// public/js/app.js
-
-/**
- * DnD Offline Multiplayer - Main Application
- */
+// ============================================================================
+// DnD Offline Multiplayer - Main Application
+// ============================================================================
 
 import { wsManager } from './websocket.js';
 import { gameState } from './game-state.js';
 import DMPanel from './dm-panel.js';
+import type { Player, ChatMessage, DiceRollResult, Event as EventType, Game } from '../../shared/index.js';
 
 class App {
+  private gameId: string | null = null;
+  private playerName = '';
+  private characterName = '';
+  private dmPanel: DMPanel | null = null;
+
   constructor() {
-    this.gameId = null;
-    this.playerName = '';
-    this.characterName = '';
-    
     this.init();
   }
 
-  async init() {
+  private async init(): Promise<void> {
     // Check URL params for game ID
     const urlParams = new URLSearchParams(window.location.search);
     this.gameId = urlParams.get('game');
@@ -31,15 +31,14 @@ class App {
     // Setup WebSocket event handlers
     this.setupWebSocketHandlers();
 
-    // Initialize DM panel (will only show for DMs)
-    new DMPanel();
-    
     // Connect to WebSocket
     wsManager.connect();
   }
 
-  showCreateOrJoinScreen() {
+  private showCreateOrJoinScreen(): void {
     const container = document.getElementById('app');
+    if (!container) return;
+
     container.innerHTML = `
       <div class="welcome-screen">
         <h1>DnD Offline Multiplayer</h1>
@@ -71,15 +70,18 @@ class App {
     });
 
     document.getElementById('join-game-btn')?.addEventListener('click', () => {
-      const gameId = document.getElementById('game-id-input').value.trim();
+      const gameIdInput = document.getElementById('game-id-input') as HTMLInputElement;
+      const gameId = gameIdInput.value.trim();
       if (gameId) {
         window.location.href = `?game=${gameId}`;
       }
     });
   }
 
-  showCreateGameForm() {
+  private showCreateGameForm(): void {
     const container = document.getElementById('app');
+    if (!container) return;
+
     container.innerHTML = `
       <div class="welcome-screen">
         <h2>Create New Game</h2>
@@ -102,8 +104,11 @@ class App {
     `;
 
     document.getElementById('create-game-btn')?.addEventListener('click', () => {
-      const gameName = document.getElementById('game-name').value.trim();
-      const maxPlayers = parseInt(document.getElementById('max-players').value);
+      const nameInput = document.getElementById('game-name') as HTMLInputElement;
+      const maxPlayersSelect = document.getElementById('max-players') as HTMLSelectElement;
+      
+      const gameName = nameInput.value.trim();
+      const maxPlayers = parseInt(maxPlayersSelect?.value || '4');
 
       if (!gameName) {
         alert('Please enter a game name');
@@ -121,8 +126,10 @@ class App {
     });
   }
 
-  showJoinForm() {
+  private showJoinForm(): void {
     const container = document.getElementById('app');
+    if (!container) return;
+
     container.innerHTML = `
       <div class="welcome-screen">
         <h2>Join Game</h2>
@@ -136,8 +143,11 @@ class App {
     `;
 
     document.getElementById('join-btn')?.addEventListener('click', () => {
-      this.playerName = document.getElementById('player-name').value.trim();
-      this.characterName = document.getElementById('character-name').value.trim();
+      const nameInput = document.getElementById('player-name') as HTMLInputElement;
+      const charInput = document.getElementById('character-name') as HTMLInputElement;
+      
+      this.playerName = nameInput.value.trim();
+      this.characterName = charInput.value.trim();
 
       if (!this.playerName || !this.characterName) {
         alert('Please fill in all fields');
@@ -147,7 +157,7 @@ class App {
       wsManager.send({
         type: 'JOIN_GAME',
         payload: {
-          gameId: this.gameId,
+          gameId: this.gameId!,
           playerName: this.playerName,
           characterName: this.characterName,
         },
@@ -155,7 +165,7 @@ class App {
     });
   }
 
-  setupWebSocketHandlers() {
+  private setupWebSocketHandlers(): void {
     // Connection events
     wsManager.on('open', () => {
       console.log('Connected to server');
@@ -170,8 +180,9 @@ class App {
     });
 
     // Game events
-    wsManager.on('GAME_CREATED', (payload) => {
-      this.gameId = payload.gameId;
+    wsManager.on('GAME_CREATED', (payload: unknown) => {
+      const p = payload as { gameId: string; game: unknown };
+      this.gameId = p.gameId;
       window.history.replaceState({}, '', `?game=${this.gameId}`);
       
       const shareUrl = `${window.location.origin}?game=${this.gameId}`;
@@ -180,60 +191,57 @@ class App {
       this.setupGameUI();
     });
 
-    wsManager.on('GAME_STATE', (payload) => {
-      gameState.setGame(payload.game);
-      this.setupGameUI();
-    });
-
-    wsManager.on('PLAYER_JOINED', (payload) => {
-      gameState.setGame({ 
-        ...gameState.game, 
-        players: payload.game?.players || gameState.game?.players 
-      });
-      
-      if (!gameState.currentPlayer) {
-        const currentPlayer = payload.player;
-        gameState.setCurrentPlayer(currentPlayer);
+    wsManager.on('GAME_STATE', (payload: unknown) => {
+      const p = payload as { game: Game };
+      if (p.game) {
+        gameState.setGame(p.game);
         this.setupGameUI();
       }
     });
 
-    wsManager.on('PLAYER_LEFT', (payload) => {
-      gameState.setGame({
-        ...gameState.game,
-        players: payload.game?.players || [],
-      });
+    wsManager.on('PLAYER_JOINED', (payload: unknown) => {
+      const p = payload as { gameId: string; player?: Player; gameState?: unknown };
+      
+      if (p.player && !gameState.currentPlayer) {
+        gameState.setCurrentPlayer(p.player);
+        this.setupGameUI();
+      }
     });
 
     // Chat events
-    wsManager.on('CHAT_MESSAGE', (payload) => {
-      gameState.addChatMessage(payload);
-      this.appendChatMessage(payload);
+    wsManager.on('CHAT_MESSAGE', (payload: unknown) => {
+      const message = payload as ChatMessage;
+      gameState.addChatMessage(message);
+      this.appendChatMessage(message);
     });
 
     // Dice roll events
-    wsManager.on('DICE_ROLL_RESULT', (payload) => {
-      this.appendDiceRoll(payload);
+    wsManager.on('DICE_ROLL_RESULT', (payload: unknown) => {
+      const result = payload as { result: DiceRollResult };
+      this.appendDiceRoll(result.result);
     });
 
     // NPC events
-    wsManager.on('NPC_CREATED', (payload) => {
-      gameState.addNPC(payload);
+    wsManager.on('NPC_CREATED', () => {
+      // State updated via gameState.subscribe in DMPanel
     });
 
     // Event events
-    wsManager.on('EVENT_CREATED', (payload) => {
-      gameState.addEvent(payload);
+    wsManager.on('EVENT_CREATED', () => {
+      // State updated via gameState.subscribe in DMPanel
     });
 
     // Error handling
-    wsManager.on('ERROR', (payload) => {
-      alert(`Error: ${payload.message}`);
+    wsManager.on('ERROR', (payload: unknown) => {
+      const p = payload as { message: string };
+      alert(`Error: ${p.message}`);
     });
   }
 
-  setupGameUI() {
+  private setupGameUI(): void {
     const container = document.getElementById('app');
+    if (!container) return;
+
     const game = gameState.game;
     const player = gameState.currentPlayer || game?.players?.[0];
 
@@ -244,8 +252,8 @@ class App {
     container.innerHTML = `
       <div class="game-interface">
         <header class="game-header">
-          <h2>${game.name}</h2>
-          <span class="game-id">ID: ${game.id}</span>
+          <h2>${this.escapeHtml(game.name)}</h2>
+          <span class="game-id">ID: ${this.escapeHtml(game.id)}</span>
           <button id="copy-link-btn" title="Copy link">📋</button>
         </header>
 
@@ -254,9 +262,9 @@ class App {
           <aside class="players-panel">
             <h3>Players (${game.players?.length || 0}/${game.maxPlayers})</h3>
             <ul id="players-list">
-              ${(game.players || []).map(p => `
+              ${(game.players || []).map((p: Player) => `
                 <li class="${p.isDM ? 'dm' : ''}">
-                  ${p.isDM ? '👑 ' : ''}${p.name} (${p.characterName})
+                  ${p.isDM ? '👑 ' : ''}${this.escapeHtml(p.name)} (${this.escapeHtml(p.characterName)})
                 </li>
               `).join('')}
             </ul>
@@ -294,9 +302,9 @@ class App {
     `;
 
     // Setup chat form
-    document.getElementById('chat-form')?.addEventListener('submit', (e) => {
+    document.getElementById('chat-form')?.addEventListener('submit', (e: Event) => {
       e.preventDefault();
-      const input = document.getElementById('chat-input');
+      const input = document.getElementById('chat-input') as HTMLInputElement;
       const content = input.value.trim();
       
       if (content) {
@@ -310,9 +318,13 @@ class App {
 
     // Setup dice roller
     document.getElementById('roll-btn')?.addEventListener('click', () => {
-      const diceType = parseInt(document.getElementById('dice-type').value);
-      const count = parseInt(document.getElementById('dice-count').value);
-      const modifier = parseInt(document.getElementById('dice-modifier').value) || 0;
+      const diceTypeSelect = document.getElementById('dice-type') as HTMLSelectElement;
+      const countInput = document.getElementById('dice-count') as HTMLInputElement;
+      const modInput = document.getElementById('dice-modifier') as HTMLInputElement;
+      
+      const diceType = parseInt(diceTypeSelect?.value || '20');
+      const count = parseInt(countInput?.value || '1');
+      const modifier = parseInt(modInput?.value || '0') || 0;
 
       wsManager.send({
         type: 'DICE_ROLL',
@@ -331,15 +343,15 @@ class App {
     });
 
     // Load chat history
-    (game.chatHistory || []).forEach(msg => this.appendChatMessage(msg));
+    (game.chatHistory || []).forEach((msg: ChatMessage) => this.appendChatMessage(msg));
     
     // Initialize DM panel if DM
-    if (player.isDM) {
-      new DMPanel();
+    if (player.isDM && !this.dmPanel) {
+      this.dmPanel = new DMPanel();
     }
   }
 
-  appendChatMessage(message) {
+  private appendChatMessage(message: ChatMessage): void {
     const messagesDiv = document.getElementById('chat-messages');
     if (!messagesDiv) return;
 
@@ -359,7 +371,7 @@ class App {
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
   }
 
-  appendDiceRoll(result) {
+  private appendDiceRoll(result: DiceRollResult): void {
     const messagesDiv = document.getElementById('chat-messages');
     if (!messagesDiv) return;
 
@@ -371,11 +383,11 @@ class App {
     rollEl.innerHTML = `
       <div class="roll-header">
         <strong>${this.escapeHtml(result.playerName)}</strong> rolled
-        ${result.count}d${result.diceType}${result.modifier !== 0 ? (result.modifier > 0 ? '+' : '') + result.modifier : ''}
+        ${result.count}d${result.diceType}${(result.modifier ?? 0) !== 0 ? ((result.modifier ?? 0) > 0 ? '+' : '') + (result.modifier ?? 0) : ''}
       </div>
       <div class="roll-details">
         Rolls: [${result.rolls.join(', ')}] 
-        ${result.modifier !== 0 ? `${result.modifier > 0 ? '+' : ''}${result.modifier}` : ''} = 
+        ${(result.modifier ?? 0) !== 0 ? `${(result.modifier ?? 0) > 0 ? '+' : ''}${result.modifier}` : ''} = 
         <strong style="color: ${highlightColor}">${result.total}</strong>
       </div>
     `;
@@ -384,15 +396,14 @@ class App {
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
   }
 
-  escapeHtml(text) {
+  private escapeHtml(text: string): string {
     if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
   }
 
-  formatTime(timestamp) {
-    if (!timestamp) return '';
+  private formatTime(timestamp: number): string {
     const date = new Date(timestamp);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
@@ -400,5 +411,5 @@ class App {
 
 // Initialize app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-  window.app = new App();
+  (window as unknown as { app: App }).app = new App();
 });

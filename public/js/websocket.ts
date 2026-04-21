@@ -1,21 +1,26 @@
-// public/js/websocket.js
+// ============================================================================
+// DnD Offline Multiplayer - WebSocket Client
+// ============================================================================
+
+import type { MessageType, WebSocketMessage } from '../../shared/index.js';
+
+interface EventHandler {
+  (payload: unknown): void;
+}
 
 /**
  * WebSocket Manager - Client connection handling with reconnection logic
  */
+export class WebSocketManager {
+  private ws: WebSocket | null = null;
+  private reconnectAttempts = 0;
+  private readonly maxReconnectAttempts = 5;
+  private readonly reconnectDelay = 1000;
+  private messageQueue: unknown[] = [];
+  private eventHandlers: Record<string, EventHandler[]> = {};
+  private connected = false;
 
-class WebSocketManager {
-  constructor() {
-    this.ws = null;
-    this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 5;
-    this.reconnectDelay = 1000;
-    this.messageQueue = [];
-    this.eventHandlers = {};
-    this.connected = false;
-  }
-
-  connect() {
+  connect(): void {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}`;
     
@@ -31,15 +36,15 @@ class WebSocketManager {
       // Process queued messages
       while (this.messageQueue.length > 0) {
         const message = this.messageQueue.shift();
-        this.send(message);
+        if (message) this.send(message as { type: MessageType; payload: unknown });
       }
       
-      this.triggerHandlers('open');
+      this.triggerHandlers('open', undefined);
     };
 
-    this.ws.onmessage = (event) => {
+    this.ws.onmessage = (event: MessageEvent) => {
       try {
-        const message = JSON.parse(event.data);
+        const message = JSON.parse(event.data) as WebSocketMessage;
         console.log('Received:', message.type, message.payload);
         
         // Trigger handlers for this message type
@@ -68,14 +73,14 @@ class WebSocketManager {
       }
     };
 
-    this.ws.onerror = (error) => {
+    this.ws.onerror = (error: Event) => {
       console.error('WebSocket error:', error);
       this.triggerHandlers('error', error);
     };
   }
 
-  send(message) {
-    if (this.connected && this.ws.readyState === WebSocket.OPEN) {
+  send(message: { type: MessageType; payload: unknown }): void {
+    if (this.connected && this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
     } else {
       // Queue message for later
@@ -83,14 +88,14 @@ class WebSocketManager {
     }
   }
 
-  on(type, handler) {
+  on(type: string, handler: EventHandler): void {
     if (!this.eventHandlers[type]) {
       this.eventHandlers[type] = [];
     }
     this.eventHandlers[type].push(handler);
   }
 
-  off(type, handler) {
+  off(type: string, handler: EventHandler): void {
     if (this.eventHandlers[type]) {
       const index = this.eventHandlers[type].indexOf(handler);
       if (index > -1) {
@@ -99,23 +104,22 @@ class WebSocketManager {
     }
   }
 
-  triggerHandlers(event, data) {
+  private triggerHandlers(event: string, data: unknown): void {
     if (this.eventHandlers[event]) {
       this.eventHandlers[event].forEach(handler => handler(data));
     }
   }
 
-  disconnect() {
+  disconnect(): void {
     if (this.ws) {
       this.ws.close();
     }
   }
 
-  isConnected() {
+  isConnected(): boolean {
     return this.connected;
   }
 }
 
 // Export singleton instance
 export const wsManager = new WebSocketManager();
-export default wsManager;

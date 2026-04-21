@@ -18,7 +18,7 @@ export type {
   DiceRollResult,
   NPCCreatePayload,
   EventCreatePayload,
-} from '../src/types';
+} from '../src/types/index.js';
 
 // Re-export Zod schemas (these work in both Node.js and browser)
 export {
@@ -29,7 +29,7 @@ export {
   npcSchema,
   eventSchema,
   safeValidate,
-} from '../src/schemas/validation';
+} from '../src/schemas/validation.js';
 
 // Type imports (inferred from schemas)
 export type {
@@ -39,4 +39,4 @@ export type {
   DiceRollInput,
   NPCCreateInput,
   EventCreateInput,
-} from '../src/schemas/validation';
+} from '../src/schemas/validation.js';
