@@ -1,0 +1,26 @@
+<h2>技术架构选择</h2>
+<p class="subtitle">关于本地 LLM API 的部署方式</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>单服务器多客户端</h3>
+      <p>DM 的电脑运行 LLM 服务器，玩家通过局域网连接到 DM 的设备。 simplest 架构，适合小型聚会。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>分布式客户端模型</h3>
+      <p>每个玩家电脑都运行轻量 LLM（通过 WebGPU/WASM）。无需局域网，但需要选择较小的模型。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>混合模式</h3>
+      <p>DM 使用强大 LLM（如 llama-3.1-70b），玩家使用轻量模型或预生成内容。平衡性能与体验。</p>
+    </div>
+  </div>
+</div>

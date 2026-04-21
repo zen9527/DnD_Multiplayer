@@ -1,0 +1,26 @@
+<h2>离线多人 D&D 游戏 - 核心概念</h2>
+<p class="subtitle">请选择你最看重的游戏模式</p>
+
+<div class="options" data-multiselect>
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>DM 主持模式</h3>
+      <p>一人扮演地下城主(DM)，负责叙述、判定和管理世界；其他玩家作为角色玩家。DM 使用本地 LLM 来生成场景、NPC 和随机事件。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>协作叙事模式</h3>
+      <p>所有玩家共同构建故事，每人轮流叙述一段剧情。LLM 作为辅助，提供创意建议、世界细节和逻辑检查。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>规则辅助模式</h3>
+      <p>传统 D&D 规则驱动，LLM 仅用于快速计算、查表和生成描述文本。玩家自己决定行动和骰子结果。</p>
+    </div>
+  </div>
+</div>
