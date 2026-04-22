@@ -181,8 +181,19 @@ class App {
 
     // Game events
     wsManager.on('GAME_CREATED', (payload: unknown) => {
-      const p = payload as { gameId: string; game: unknown };
+      const p = payload as { gameId: string; game: Game };
       this.gameId = p.gameId;
+      
+      // CRITICAL: Set game state and current player so setupGameUI can render
+      if (p.game) {
+        gameState.setGame(p.game);
+        // Set DM as current player (first player in the game)
+        const dmPlayer = p.game.players?.[0];
+        if (dmPlayer) {
+          gameState.setCurrentPlayer(dmPlayer);
+        }
+      }
+      
       window.history.replaceState({}, '', `?game=${this.gameId}`);
       
       const shareUrl = `${window.location.origin}?game=${this.gameId}`;
@@ -200,12 +211,18 @@ class App {
     });
 
     wsManager.on('PLAYER_JOINED', (payload: unknown) => {
-      const p = payload as { gameId: string; player?: Player; gameState?: unknown };
+      const p = payload as { gameId: string; player: Player; gameState: Game };
+      
+      // CRITICAL: Set game state from server response
+      if (p.gameState) {
+        gameState.setGame(p.gameState);
+      }
       
       if (p.player && !gameState.currentPlayer) {
         gameState.setCurrentPlayer(p.player);
-        this.setupGameUI();
       }
+      
+      this.setupGameUI();
     });
 
     // Chat events
