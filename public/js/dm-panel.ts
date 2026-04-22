@@ -32,7 +32,17 @@ export default class DMPanel {
         <div class="llm-settings">
           <label for="lm-studio-url">LM Studio URL:</label>
           <input type="text" id="lm-studio-url" placeholder="http://localhost:1234/v1/chat/completions">
-          <button id="test-llm">Test</button>
+          
+          <label for="lm-studio-token">API Token (optional):</label>
+          <input type="password" id="lm-studio-token" placeholder="Enter API token if required">
+          
+          <label for="lm-studio-model">Model:</label>
+          <select id="lm-studio-model">
+            <option value="local-model">Local Model (default)</option>
+          </select>
+          <button id="refresh-models">Refresh Models</button>
+          
+          <button id="test-llm">Test Connection</button>
           <span id="llm-status"></span>
         </div>
 
@@ -99,6 +109,53 @@ export default class DMPanel {
       });
     }
 
+    // API Token settings
+    const tokenInput = document.getElementById('lm-studio-token') as HTMLInputElement;
+    if (tokenInput) {
+      tokenInput.value = llmClient.getApiToken() || '';
+      
+      tokenInput.addEventListener('change', (e) => {
+        const target = e.target as HTMLInputElement;
+        llmClient.setApiToken(target.value);
+      });
+    }
+
+    // Model selection
+    const modelSelect = document.getElementById('lm-studio-model') as HTMLSelectElement;
+    if (modelSelect) {
+      modelSelect.value = llmClient.getModel();
+      
+      modelSelect.addEventListener('change', (e) => {
+        const target = e.target as HTMLSelectElement;
+        llmClient.setModel(target.value);
+      });
+    }
+
+    // Refresh models button
+    const refreshBtn = document.getElementById('refresh-models') as HTMLButtonElement;
+    refreshBtn?.addEventListener('click', async () => {
+      refreshBtn.textContent = 'Loading...';
+      refreshBtn.disabled = true;
+      
+      try {
+        const models = await llmClient.refreshModels();
+        
+        // Update model dropdown
+        if (modelSelect) {
+          modelSelect.innerHTML = models.map(m => 
+            `<option value="${m}" ${m === llmClient.getModel() ? 'selected' : ''}>${this.escapeHtml(m)}</option>`
+          ).join('');
+        }
+        
+        alert(`Loaded ${models.length} model(s)`);
+      } catch (error) {
+        alert('Failed to load models. Check LM Studio connection.');
+      } finally {
+        refreshBtn.textContent = 'Refresh Models';
+        refreshBtn.disabled = false;
+      }
+    });
+
     // Test LLM connection
     document.getElementById('test-llm')?.addEventListener('click', async () => {
       const status = document.getElementById('llm-status');
@@ -111,6 +168,12 @@ export default class DMPanel {
         if (connected) {
           status.textContent = '✓ Connected';
           status.className = 'status-connected';
+          
+          // Also show current model
+          const modelInfo = document.createElement('div');
+          modelInfo.style.fontSize = '0.8em';
+          modelInfo.textContent = `Model: ${llmClient.getModel()}`;
+          status.parentNode?.appendChild(modelInfo);
         } else {
           status.textContent = '✗ Failed';
           status.className = 'status-disconnected';

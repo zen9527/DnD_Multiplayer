@@ -25,9 +25,13 @@ interface GeneratedEvent {
  */
 export class LLMClient {
   private baseUrl: string;
+  private apiToken: string | null;
+  private model: string;
 
   constructor() {
     this.baseUrl = localStorage.getItem('lmStudioUrl') || 'http://localhost:1234/v1/chat/completions';
+    this.apiToken = localStorage.getItem('lmStudioToken') || null;
+    this.model = localStorage.getItem('lmStudioModel') || 'local-model';
   }
 
   setBaseUrl(url: string): void {
@@ -37,6 +41,59 @@ export class LLMClient {
 
   getBaseUrl(): string {
     return this.baseUrl;
+  }
+
+  setApiToken(token: string): void {
+    this.apiToken = token || null;
+    if (token) {
+      localStorage.setItem('lmStudioToken', token);
+    } else {
+      localStorage.removeItem('lmStudioToken');
+    }
+  }
+
+  getApiToken(): string | null {
+    return this.apiToken;
+  }
+
+  setModel(model: string): void {
+    this.model = model;
+    localStorage.setItem('lmStudioModel', model);
+  }
+
+  getModel(): string {
+    return this.model;
+  }
+
+  private getHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (this.apiToken) {
+      headers['Authorization'] = `Bearer ${this.apiToken}`;
+    }
+    
+    return headers;
+  }
+
+  private async fetchModels(): Promise<string[]> {
+    try {
+      // LM Studio provides /v1/models endpoint to list available models
+      const baseUrlWithoutEndpoint = this.baseUrl.replace('/v1/chat/completions', '');
+      const response = await fetch(`${baseUrlWithoutEndpoint}/v1/models`, {
+        method: 'GET',
+        headers: this.getHeaders(),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return data.data?.map((m: any) => m.id) || ['local-model'];
+      }
+    } catch (error) {
+      console.warn('Failed to fetch models:', error);
+    }
+    return ['local-model']; // Fallback
   }
 
   async generateScene(prompt: string, context: Record<string, unknown> = {}): Promise<string> {
@@ -55,11 +112,9 @@ export class LLMClient {
 
       const response = await fetch(this.baseUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: this.getHeaders(),
         body: JSON.stringify({
-          model: 'local-model',
+          model: this.model,
           messages,
           temperature: 0.8,
           max_tokens: 1000,
@@ -67,7 +122,7 @@ export class LLMClient {
       });
 
       if (!response.ok) {
-        throw new Error(`LM Studio API error: ${response.status}`);
+        throw new Error(`LM Studio API error: ${response.status} ${await response.text()}`);
       }
 
       const data = await response.json();
@@ -97,11 +152,9 @@ export class LLMClient {
 
       const response = await fetch(this.baseUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: this.getHeaders(),
         body: JSON.stringify({
-          model: 'local-model',
+          model: this.model,
           messages,
           temperature: 0.7,
           max_tokens: 500,
@@ -109,7 +162,7 @@ export class LLMClient {
       });
 
       if (!response.ok) {
-        throw new Error(`LM Studio API error: ${response.status}`);
+        throw new Error(`LM Studio API error: ${response.status} ${await response.text()}`);
       }
 
       const data = await response.json();
@@ -156,11 +209,9 @@ export class LLMClient {
 
       const response = await fetch(this.baseUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: this.getHeaders(),
         body: JSON.stringify({
-          model: 'local-model',
+          model: this.model,
           messages,
           temperature: 0.8,
           max_tokens: 500,
@@ -168,7 +219,7 @@ export class LLMClient {
       });
 
       if (!response.ok) {
-        throw new Error(`LM Studio API error: ${response.status}`);
+        throw new Error(`LM Studio API error: ${response.status} ${await response.text()}`);
       }
 
       const data = await response.json();
@@ -208,12 +259,18 @@ export class LLMClient {
     try {
       const response = await fetch(this.baseUrl, { 
         method: 'POST', 
+        headers: this.getHeaders(),
         body: '{}' 
       });
       return response.ok || response.status === 400; // 400 means server is up but expecting proper format
     } catch {
       return false;
     }
+  }
+
+  async refreshModels(): Promise<string[]> {
+    const models = await this.fetchModels();
+    return models;
   }
 }
 
