@@ -3,6 +3,10 @@
 // ============================================================================
 import { WebSocket, WebSocketServer } from 'ws';
 import { GameStore } from '../game/store.js';
+import { handleCreateGame, handleJoinGame } from './handlers/game.js';
+import { handleChatMessage } from './handlers/chat.js';
+import { handleDiceRoll } from './handlers/dice.js';
+import { handleNPCCreate, handleEventCreate } from './handlers/dm.js';
 /**
  * Global Game Store Instance
  */
@@ -53,7 +57,7 @@ export class WebSocketManager {
         try {
             const message = JSON.parse(data.toString());
             console.log(`[WebSocket] Received ${message.type} from ${connectionId}`);
-            // Route to appropriate handler (will be implemented in Plan 2 tasks)
+            // Route to appropriate handler synchronously
             this.routeMessage(ws, connectionId, message);
         }
         catch (error) {
@@ -62,57 +66,32 @@ export class WebSocketManager {
         }
     }
     /**
-     * Route message to appropriate handler
+     * Route message to appropriate handler (synchronous dispatch)
      */
     routeMessage(ws, connectionId, message) {
-        // Import handlers dynamically to avoid circular dependencies
-        import('./handlers/game.js').then(({ handleCreateGame, handleJoinGame }) => this.handleGameMessages(ws, connectionId, message, { handleCreateGame, handleJoinGame })).then(() => import('./handlers/chat.js'))
-            .then(({ handleChatMessage }) => this.handleChatMessages(ws, connectionId, message, { handleChatMessage }))
-            .then(() => import('./handlers/dice.js'))
-            .then(({ handleDiceRoll }) => this.handleDiceMessages(ws, connectionId, message, { handleDiceRoll }))
-            .then(() => import('./handlers/dm.js'))
-            .then(({ handleNPCCreate, handleEventCreate }) => this.handleDMMessages(ws, connectionId, message, { handleNPCCreate, handleEventCreate }))
-            .catch((error) => {
-            console.error('[WebSocket] Handler import error:', error);
-            this.sendError(ws, 'Internal server error');
-        });
-    }
-    /**
-     * Handle game-related messages (placeholder - will be filled by handlers)
-     */
-    handleGameMessages(ws, connectionId, message, handlers) {
-        if (message.type === 'CREATE_GAME') {
-            handlers.handleCreateGame(ws, message.payload);
-        }
-        else if (message.type === 'JOIN_GAME') {
-            handlers.handleJoinGame(ws, connectionId, message.payload);
-        }
-    }
-    /**
-     * Handle chat-related messages
-     */
-    handleChatMessages(ws, connectionId, message, handlers) {
-        if (message.type === 'CHAT_MESSAGE') {
-            handlers.handleChatMessage(ws, connectionId, message.payload);
-        }
-    }
-    /**
-     * Handle dice-related messages
-     */
-    handleDiceMessages(ws, connectionId, message, handlers) {
-        if (message.type === 'DICE_ROLL') {
-            handlers.handleDiceRoll(ws, connectionId, message.payload);
-        }
-    }
-    /**
-     * Handle DM-related messages
-     */
-    handleDMMessages(ws, connectionId, message, handlers) {
-        if (message.type === 'NPC_CREATE') {
-            handlers.handleNPCCreate(ws, connectionId, message.payload);
-        }
-        else if (message.type === 'EVENT_CREATE') {
-            handlers.handleEventCreate(ws, connectionId, message.payload);
+        const payload = message.payload;
+        switch (message.type) {
+            case 'CREATE_GAME':
+                handleCreateGame(ws, payload);
+                break;
+            case 'JOIN_GAME':
+                handleJoinGame(ws, connectionId, payload);
+                break;
+            case 'CHAT_MESSAGE':
+                handleChatMessage(ws, connectionId, payload);
+                break;
+            case 'DICE_ROLL':
+                handleDiceRoll(ws, connectionId, payload);
+                break;
+            case 'NPC_CREATE':
+                handleNPCCreate(ws, connectionId, payload);
+                break;
+            case 'EVENT_CREATE':
+                handleEventCreate(ws, connectionId, payload);
+                break;
+            default:
+                console.log(`[WebSocket] Unknown message type: ${message.type}`);
+                this.sendError(ws, `Unknown message type: ${message.type}`);
         }
     }
     /**

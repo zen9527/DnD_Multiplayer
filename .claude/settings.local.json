@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(bash scripts/start-server.sh --project-dir \"C:/Users/Flex/Desktop/Codes/DnD\")",
-      "Bash(bash *)"
-    ]
-  }
-}

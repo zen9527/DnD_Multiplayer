@@ -22,25 +22,9 @@ export declare class WebSocketManager {
      */
     private handleMessage;
     /**
-     * Route message to appropriate handler
+     * Route message to appropriate handler (synchronous dispatch)
      */
     private routeMessage;
-    /**
-     * Handle game-related messages (placeholder - will be filled by handlers)
-     */
-    private handleGameMessages;
-    /**
-     * Handle chat-related messages
-     */
-    private handleChatMessages;
-    /**
-     * Handle dice-related messages
-     */
-    private handleDiceMessages;
-    /**
-     * Handle DM-related messages
-     */
-    private handleDMMessages;
     /**
      * Send a message to a specific client
      */
