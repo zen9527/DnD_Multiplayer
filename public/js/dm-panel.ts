@@ -13,12 +13,102 @@ import type { NPC, Event as EventType } from '../../shared/index.js';
 export default class DMPanel {
   private element: HTMLElement | null = null;
 
+  // Provider presets for quick configuration
+  private static readonly PROVIDER_PRESETS = {
+    lmstudio: 'http://localhost:1234/v1',
+    ollama: 'http://localhost:11434/v1',
+    openai: 'https://api.openai.com/v1',
+    together: 'https://api.together.xyz/v1',
+    groq: 'https://api.groq.com/openai/v1',
+  };
+
   constructor() {
     this.element = document.getElementById('dm-panel');
     if (!this.element) return;
     
     this.initUI();
     this.setupEventListeners();
+    this.initializeLLMSettings();
+  }
+
+  private async initializeLLMSettings(): Promise<void> {
+    // Set initial values from localStorage or defaults
+    const urlInput = document.getElementById('llm-api-url') as HTMLInputElement;
+    const keyInput = document.getElementById('llm-api-key') as HTMLInputElement;
+    const presetSelect = document.getElementById('llm-provider-preset') as HTMLSelectElement;
+    
+    if (urlInput) {
+      urlInput.value = llmClient.getBaseUrl();
+      
+      // Auto-detect provider based on URL
+      const baseUrl = llmClient.getBaseUrl();
+      if (baseUrl.includes('localhost:1234')) presetSelect.value = 'lmstudio';
+      else if (baseUrl.includes('localhost:11434')) presetSelect.value = 'ollama';
+      else if (baseUrl.includes('api.openai.com')) presetSelect.value = 'openai';
+      else if (baseUrl.includes('together.xyz')) presetSelect.value = 'together';
+      else if (baseUrl.includes('groq.com')) presetSelect.value = 'groq';
+      else presetSelect.value = 'custom';
+    }
+
+    if (keyInput) {
+      keyInput.value = llmClient.getApiKey() || '';
+    }
+
+    // Auto-test connection on load
+    await this.testConnection();
+    
+    // Auto-refresh models if connected
+    const status = document.getElementById('llm-status');
+    if (status?.textContent.includes('✓')) {
+      await this.refreshModels();
+    }
+  }
+
+  private async testConnection(): Promise<void> {
+    const status = document.getElementById('llm-status');
+    if (!status) return;
+    
+    status.textContent = 'Testing...';
+    
+    try {
+      const connected = await llmClient.isConnected();
+      if (connected) {
+        status.textContent = '✓ Connected';
+        status.className = 'status-connected';
+      } else {
+        status.textContent = '✗ Failed';
+        status.className = 'status-disconnected';
+      }
+    } catch (error) {
+      status.textContent = '✗ Failed';
+      status.className = 'status-disconnected';
+    }
+  }
+
+  private async refreshModels(): Promise<void> {
+    const refreshBtn = document.getElementById('refresh-models') as HTMLButtonElement;
+    const modelSelect = document.getElementById('llm-model') as HTMLSelectElement;
+    
+    if (!refreshBtn || !modelSelect) return;
+
+    refreshBtn.textContent = 'Loading...';
+    refreshBtn.disabled = true;
+    
+    try {
+      const models = await llmClient.refreshModels();
+      
+      // Update model dropdown
+      if (models.length > 0) {
+        modelSelect.innerHTML = models.map(m => 
+          `<option value="${m}" ${m === llmClient.getModel() ? 'selected' : ''}>${this.escapeHtml(m)}</option>`
+        ).join('');
+      }
+    } catch (error) {
+      console.error('Failed to load models:', error);
+    } finally {
+      refreshBtn.textContent = 'Refresh Models';
+      refreshBtn.disabled = false;
+    }
   }
 
   private initUI(): void {
@@ -28,23 +118,33 @@ export default class DMPanel {
       <div class="dm-controls">
         <h3>DM Controls</h3>
         
-        <!-- LLM Settings -->
-        <div class="llm-settings">
-          <label for="lm-studio-url">LM Studio URL:</label>
-          <input type="text" id="lm-studio-url" placeholder="http://localhost:1234/v1/chat/completions">
-          
-          <label for="lm-studio-token">API Token (optional):</label>
-          <input type="password" id="lm-studio-token" placeholder="Enter API token if required">
-          
-          <label for="lm-studio-model">Model:</label>
-          <select id="lm-studio-model">
-            <option value="local-model">Local Model (default)</option>
-          </select>
-          <button id="refresh-models">Refresh Models</button>
-          
-          <button id="test-llm">Test Connection</button>
-          <span id="llm-status"></span>
-        </div>
+         <!-- LLM API Settings -->
+         <div class="llm-settings">
+           <label for="llm-provider-preset">LLM Provider:</label>
+           <select id="llm-provider-preset">
+             <option value="custom">Custom</option>
+             <option value="lmstudio">LM Studio (Local)</option>
+             <option value="ollama">Ollama (Local)</option>
+             <option value="openai">OpenAI</option>
+             <option value="together">Together AI</option>
+             <option value="groq">Groq</option>
+           </select>
+           
+           <label for="llm-api-url">API URL:</label>
+           <input type="text" id="llm-api-url" placeholder="http://192.168.1.107:12340/v1">
+           
+           <label for="llm-api-key">API Key (optional):</label>
+           <input type="password" id="llm-api-key" placeholder="Enter API key if required">
+           
+           <label for="llm-model">Model:</label>
+           <select id="llm-model">
+             <option value="local-model">Local Model (default)</option>
+           </select>
+           <button id="refresh-models">Refresh Models</button>
+           
+           <button id="test-llm">Test Connection</button>
+           <span id="llm-status"></span>
+         </div>
 
         <!-- Generate NPC (AI) -->
         <div class="generate-section">
@@ -98,30 +198,38 @@ export default class DMPanel {
   }
 
   private setupEventListeners(): void {
-    // LLM URL settings
-    const urlInput = document.getElementById('lm-studio-url') as HTMLInputElement;
+    // Provider preset selector
+    const presetSelect = document.getElementById('llm-provider-preset') as HTMLSelectElement;
+    const urlInput = document.getElementById('llm-api-url') as HTMLInputElement;
+    
+    presetSelect?.addEventListener('change', (e) => {
+      const target = e.target as HTMLSelectElement;
+      if (target.value !== 'custom' && DMPanel.PROVIDER_PRESETS[target.value as keyof typeof DMPanel.PROVIDER_PRESETS]) {
+        urlInput.value = DMPanel.PROVIDER_PRESETS[target.value as keyof typeof DMPanel.PROVIDER_PRESETS];
+        llmClient.setBaseUrl(urlInput.value);
+      }
+    });
+
+    // LLM API URL settings
     if (urlInput) {
-      urlInput.value = llmClient.getBaseUrl();
-      
       urlInput.addEventListener('change', (e) => {
         const target = e.target as HTMLInputElement;
+        presetSelect!.value = 'custom'; // Switch to custom when manually edited
         llmClient.setBaseUrl(target.value);
       });
     }
 
-    // API Token settings
-    const tokenInput = document.getElementById('lm-studio-token') as HTMLInputElement;
-    if (tokenInput) {
-      tokenInput.value = llmClient.getApiToken() || '';
-      
-      tokenInput.addEventListener('change', (e) => {
+    // API Key settings
+    const keyInput = document.getElementById('llm-api-key') as HTMLInputElement;
+    if (keyInput) {
+      keyInput.addEventListener('change', (e) => {
         const target = e.target as HTMLInputElement;
-        llmClient.setApiToken(target.value);
+        llmClient.setApiKey(target.value);
       });
     }
 
     // Model selection
-    const modelSelect = document.getElementById('lm-studio-model') as HTMLSelectElement;
+    const modelSelect = document.getElementById('llm-model') as HTMLSelectElement;
     if (modelSelect) {
       modelSelect.value = llmClient.getModel();
       
@@ -133,56 +241,10 @@ export default class DMPanel {
 
     // Refresh models button
     const refreshBtn = document.getElementById('refresh-models') as HTMLButtonElement;
-    refreshBtn?.addEventListener('click', async () => {
-      refreshBtn.textContent = 'Loading...';
-      refreshBtn.disabled = true;
-      
-      try {
-        const models = await llmClient.refreshModels();
-        
-        // Update model dropdown
-        if (modelSelect) {
-          modelSelect.innerHTML = models.map(m => 
-            `<option value="${m}" ${m === llmClient.getModel() ? 'selected' : ''}>${this.escapeHtml(m)}</option>`
-          ).join('');
-        }
-        
-        alert(`Loaded ${models.length} model(s)`);
-      } catch (error) {
-        alert('Failed to load models. Check LM Studio connection.');
-      } finally {
-        refreshBtn.textContent = 'Refresh Models';
-        refreshBtn.disabled = false;
-      }
-    });
+    refreshBtn?.addEventListener('click', () => this.refreshModels());
 
     // Test LLM connection
-    document.getElementById('test-llm')?.addEventListener('click', async () => {
-      const status = document.getElementById('llm-status');
-      if (!status) return;
-      
-      status.textContent = 'Testing...';
-      
-      try {
-        const connected = await llmClient.isConnected();
-        if (connected) {
-          status.textContent = '✓ Connected';
-          status.className = 'status-connected';
-          
-          // Also show current model
-          const modelInfo = document.createElement('div');
-          modelInfo.style.fontSize = '0.8em';
-          modelInfo.textContent = `Model: ${llmClient.getModel()}`;
-          status.parentNode?.appendChild(modelInfo);
-        } else {
-          status.textContent = '✗ Failed';
-          status.className = 'status-disconnected';
-        }
-      } catch (error) {
-        status.textContent = '✗ Failed';
-        status.className = 'status-disconnected';
-      }
-    });
+    document.getElementById('test-llm')?.addEventListener('click', () => this.testConnection());
 
     // Generate NPC (AI)
     document.getElementById('generate-npc')?.addEventListener('click', async () => {

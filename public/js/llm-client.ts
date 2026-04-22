@@ -1,5 +1,6 @@
 // ============================================================================
-// DnD Offline Multiplayer - LLM Client (LM Studio)
+// DnD Offline Multiplayer - LLM Client (OpenAI-compatible APIs)
+// Supports: LM Studio, Ollama, OpenAI, Together AI, Groq, etc.
 // ============================================================================
 
 /**
@@ -21,44 +22,57 @@ interface GeneratedEvent {
 }
 
 /**
- * LM Studio Client - AI-powered content generation
+ * LLM Client - Universal API for OpenAI-compatible endpoints
  */
 export class LLMClient {
   private baseUrl: string;
-  private apiToken: string | null;
+  private apiKey: string | null;
   private model: string;
 
   constructor() {
-    this.baseUrl = localStorage.getItem('lmStudioUrl') || 'http://localhost:1234/v1/chat/completions';
-    this.apiToken = localStorage.getItem('lmStudioToken') || null;
-    this.model = localStorage.getItem('lmStudioModel') || 'local-model';
+    // Read from environment variables (set at build time via Vite)
+    const defaultUrl = import.meta.env.VITE_LLM_API_URL || 'http://localhost:1234/v1';
+    const defaultKey = import.meta.env.VITE_LLM_API_KEY || '';
+    
+    // Try to load from localStorage first, fallback to env vars
+    const storedUrl = localStorage.getItem('llmApiUrl');
+    const storedKey = localStorage.getItem('llmApiKey');
+    
+    this.baseUrl = storedUrl || defaultUrl;
+    this.apiKey = storedKey || (defaultKey ? defaultKey : null);
+    this.model = localStorage.getItem('llmModel') || 'local-model';
   }
 
   setBaseUrl(url: string): void {
-    this.baseUrl = url;
-    localStorage.setItem('lmStudioUrl', url);
+    // Ensure URL ends with /v1 if it doesn't have a specific endpoint
+    let cleanUrl = url.replace(/\/(chat|models).*$/, '');
+    if (!cleanUrl.endsWith('/v1')) {
+      cleanUrl = `${cleanUrl}/v1`;
+    }
+    this.baseUrl = cleanUrl;
+    localStorage.setItem('llmApiUrl', cleanUrl);
   }
 
   getBaseUrl(): string {
     return this.baseUrl;
   }
 
-  setApiToken(token: string): void {
-    this.apiToken = token || null;
-    if (token) {
-      localStorage.setItem('lmStudioToken', token);
+  setApiKey(key: string): void {
+    this.apiKey = key || null;
+    if (key) {
+      localStorage.setItem('llmApiKey', key);
     } else {
-      localStorage.removeItem('lmStudioToken');
+      localStorage.removeItem('llmApiKey');
     }
   }
 
-  getApiToken(): string | null {
-    return this.apiToken;
+  getApiKey(): string | null {
+    return this.apiKey;
   }
 
   setModel(model: string): void {
     this.model = model;
-    localStorage.setItem('lmStudioModel', model);
+    localStorage.setItem('llmModel', model);
   }
 
   getModel(): string {
@@ -70,28 +84,37 @@ export class LLMClient {
       'Content-Type': 'application/json',
     };
     
-    if (this.apiToken) {
-      headers['Authorization'] = `Bearer ${this.apiToken}`;
+    if (this.apiKey) {
+      headers['Authorization'] = `Bearer ${this.apiKey}`;
     }
     
     return headers;
   }
 
+  private getChatEndpoint(): string {
+    return `${this.baseUrl}/chat/completions`;
+  }
+
+  private getModelsEndpoint(): string {
+    return `${this.baseUrl}/models`;
+  }
+
   private async fetchModels(): Promise<string[]> {
     try {
-      // LM Studio provides /v1/models endpoint to list available models
-      const baseUrlWithoutEndpoint = this.baseUrl.replace('/v1/chat/completions', '');
-      const response = await fetch(`${baseUrlWithoutEndpoint}/v1/models`, {
+      const response = await fetch(this.getModelsEndpoint(), {
         method: 'GET',
         headers: this.getHeaders(),
       });
 
       if (response.ok) {
         const data = await response.json();
+        console.log('LLM API models:', data);
         return data.data?.map((m: any) => m.id) || ['local-model'];
+      } else {
+        console.error('Failed to fetch models:', response.status, await response.text());
       }
     } catch (error) {
-      console.warn('Failed to fetch models:', error);
+      console.error('Failed to fetch models:', error);
     }
     return ['local-model']; // Fallback
   }
@@ -110,7 +133,7 @@ export class LLMClient {
         }
       ];
 
-      const response = await fetch(this.baseUrl, {
+      const response = await fetch(this.getChatEndpoint(), {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify({
@@ -122,7 +145,7 @@ export class LLMClient {
       });
 
       if (!response.ok) {
-        throw new Error(`LM Studio API error: ${response.status} ${await response.text()}`);
+        throw new Error(`LLM API error: ${response.status} ${await response.text()}`);
       }
 
       const data = await response.json();
@@ -150,7 +173,7 @@ export class LLMClient {
         }
       ];
 
-      const response = await fetch(this.baseUrl, {
+      const response = await fetch(this.getChatEndpoint(), {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify({
@@ -162,7 +185,7 @@ export class LLMClient {
       });
 
       if (!response.ok) {
-        throw new Error(`LM Studio API error: ${response.status} ${await response.text()}`);
+        throw new Error(`LLM API error: ${response.status} ${await response.text()}`);
       }
 
       const data = await response.json();
@@ -207,7 +230,7 @@ export class LLMClient {
         }
       ];
 
-      const response = await fetch(this.baseUrl, {
+      const response = await fetch(this.getChatEndpoint(), {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify({
@@ -219,7 +242,7 @@ export class LLMClient {
       });
 
       if (!response.ok) {
-        throw new Error(`LM Studio API error: ${response.status} ${await response.text()}`);
+        throw new Error(`LLM API error: ${response.status} ${await response.text()}`);
       }
 
       const data = await response.json();
@@ -255,15 +278,15 @@ export class LLMClient {
   }
 
   async isConnected(): Promise<boolean> {
-    // Test connection by making a simple request
+    // Test connection by checking the models endpoint first (lighter weight)
     try {
-      const response = await fetch(this.baseUrl, { 
-        method: 'POST', 
+      const response = await fetch(this.getModelsEndpoint(), { 
+        method: 'GET',
         headers: this.getHeaders(),
-        body: '{}' 
       });
-      return response.ok || response.status === 400; // 400 means server is up but expecting proper format
-    } catch {
+      return response.ok || response.status === 401; // 401 means server is up but auth required
+    } catch (error) {
+      console.error('Connection test failed:', error);
       return false;
     }
   }
